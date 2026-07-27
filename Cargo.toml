@@ -1,0 +1,37 @@
+[package]
+name = "flashbpe"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust implementation of a Byte Pair Encoding tokenizer, with Python bindings via PyO3"
+license = "MIT"
+readme = "README.md"
+
+[lib]
+# "cdylib" produces the shared library Python imports.
+# "rlib" lets `cargo test` link a normal Rust test binary against the same
+# code, without going through Python at all.
+name = "flashbpe"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3         = { version = "0.27" }
+pyo3-log     = "0.13"
+log          = "0.4"
+fancy-regex  = "0.16.1"
+ahash        = "0.8.12"
+rayon        = "1.11.0"
+compact_str  = "0.9.0"
+dary_heap    = "0.3"
+
+[features]
+default = ["extension-module"]
+# "extension-module" links against a Python interpreter at build time, which
+# is what maturin needs to produce an importable .so/.pyd. It must be OFF for
+# `cargo test`, since a standalone Rust test binary has no Python process to
+# link against — see the "Development" section in README.md.
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+opt-level      = 3
+lto            = true
+codegen-units  = 1

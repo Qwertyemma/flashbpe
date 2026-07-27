@@ -1,0 +1,32 @@
+# Rust build output
+target/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Test cache
+.pytest_cache/
+.cache/
+
+# Local scratch files / trained tokenizer artifacts produced while testing
+*.vocab.json
+*.merges.txt
+ignore/
