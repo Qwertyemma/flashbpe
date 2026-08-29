@@ -39,7 +39,9 @@ struct Word {
 
 impl Word {
     fn new(bytes: &[u8], byte_to_rank: &[u32; 256]) -> Self {
-        Self { ids: bytes.iter().map(|&b| byte_to_rank[b as usize]).collect() }
+        Self {
+            ids: bytes.iter().map(|&b| byte_to_rank[b as usize]).collect(),
+        }
     }
 
     fn pairs(&self) -> impl Iterator<Item = Pair> + '_ {
@@ -54,25 +56,31 @@ impl Word {
     fn merge_pair(&mut self, pair: Pair, new_id: u32) -> Vec<(Pair, i32)> {
         let (a, b) = pair;
         let n = self.ids.len();
-        if n < 2 { return Vec::new(); }
+        if n < 2 {
+            return Vec::new();
+        }
 
-        let mut out    = Vec::with_capacity(n);
+        let mut out = Vec::with_capacity(n);
         let mut deltas = Vec::with_capacity(8);
         let mut i = 0;
 
         while i < n {
             if i + 1 < n && self.ids[i] == a && self.ids[i + 1] == b {
-                let left  = out.last().copied();
-                let right = if i + 2 < n { Some(self.ids[i + 2]) } else { None };
+                let left = out.last().copied();
+                let right = if i + 2 < n {
+                    Some(self.ids[i + 2])
+                } else {
+                    None
+                };
 
                 if let Some(x) = left {
-                    deltas.push(((x, a),      -1));
-                    deltas.push(((x, new_id),  1));
+                    deltas.push(((x, a), -1));
+                    deltas.push(((x, new_id), 1));
                 }
                 deltas.push(((a, b), -1));
                 if let Some(y) = right {
-                    deltas.push(((b, y),      -1));
-                    deltas.push(((new_id, y),  1));
+                    deltas.push(((b, y), -1));
+                    deltas.push(((new_id, y), 1));
                 }
 
                 out.push(new_id);
@@ -101,22 +109,29 @@ impl Word {
 /// popped and either refreshed or discarded.
 #[derive(Debug, Eq)]
 struct MergeJob {
-    pair:  Pair,
+    pair: Pair,
     count: u64,
     /// Word indices that still contain this pair (used to limit re-scanning).
-    pos:   AHashSet<usize>,
+    pos: AHashSet<usize>,
 }
 
-impl PartialEq  for MergeJob {
-    fn eq(&self, o: &Self) -> bool { self.count == o.count && self.pair == o.pair }
+impl PartialEq for MergeJob {
+    fn eq(&self, o: &Self) -> bool {
+        self.count == o.count && self.pair == o.pair
+    }
 }
 impl PartialOrd for MergeJob {
-    fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(self.cmp(o)) }
+    fn partial_cmp(&self, o: &Self) -> Option<Ordering> {
+        Some(self.cmp(o))
+    }
 }
 impl Ord for MergeJob {
     fn cmp(&self, o: &Self) -> Ordering {
-        if self.count != o.count { self.count.cmp(&o.count) }
-        else                     { o.pair.cmp(&self.pair)  }
+        if self.count != o.count {
+            self.count.cmp(&o.count)
+        } else {
+            o.pair.cmp(&self.pair)
+        }
     }
 }
 
@@ -130,14 +145,14 @@ impl Ord for MergeJob {
 /// - `pair_counts`     — weighted frequency of each pair (weight = word count).
 /// - `where_to_update` — set of word indices that contain each pair.
 fn count_pairs_parallel(
-    words:  &[Word],
+    words: &[Word],
     counts: &[i32],
 ) -> (AHashMap<Pair, i32>, AHashMap<Pair, AHashSet<usize>>) {
     words
         .par_iter()
         .enumerate()
         .map(|(i, w)| {
-            let mut pc:  AHashMap<Pair, i32>             = AHashMap::new();
+            let mut pc: AHashMap<Pair, i32> = AHashMap::new();
             let mut wtu: AHashMap<Pair, AHashSet<usize>> = AHashMap::new();
             if w.ids.len() >= 2 && counts[i] != 0 {
                 for p in w.pairs() {
@@ -150,8 +165,12 @@ fn count_pairs_parallel(
         .reduce(
             || (AHashMap::new(), AHashMap::new()),
             |(mut ap, mut aw), (pc, wtu)| {
-                for (k, v) in pc  { *ap.entry(k).or_default() += v; }
-                for (k, s) in wtu { aw.entry(k).or_default().extend(s); }
+                for (k, v) in pc {
+                    *ap.entry(k).or_default() += v;
+                }
+                for (k, s) in wtu {
+                    aw.entry(k).or_default().extend(s);
+                }
                 (ap, aw)
             },
         )
@@ -171,7 +190,7 @@ fn build_byte_rank_tables() -> ([u8; 256], [u32; 256]) {
         .chain(b'\xa1'..=b'\xac')
         .chain(b'\xae'..=b'\xff')
         .collect();
-    let mut rank_to_byte = [0u8;  256];
+    let mut rank_to_byte = [0u8; 256];
     let mut byte_to_rank = [0u32; 256];
     let mut rank = 0usize;
     for &b in &printable {
@@ -202,9 +221,16 @@ fn build_byte_encoder() -> AHashMap<u8, char> {
     let mut cs: Vec<u32> = bs.iter().map(|&b| b as u32).collect();
     let mut n = 0u32;
     for b in 0u8..=255 {
-        if !bs.contains(&b) { bs.push(b); cs.push(256 + n); n += 1; }
+        if !bs.contains(&b) {
+            bs.push(b);
+            cs.push(256 + n);
+            n += 1;
+        }
     }
-    bs.into_iter().zip(cs).map(|(b, c)| (b, char::from_u32(c).unwrap())).collect()
+    bs.into_iter()
+        .zip(cs)
+        .map(|(b, c)| (b, char::from_u32(c).unwrap()))
+        .collect()
 }
 
 // =============================================================================
@@ -214,16 +240,16 @@ fn build_byte_encoder() -> AHashMap<u8, char> {
 #[pyclass]
 pub struct Tokenizer {
     /// Learned BPE merges: pair → merged token ID.
-    merges:           StdHashMap<Pair, u32>,
+    merges: StdHashMap<Pair, u32>,
     /// The regex pattern string (stored for export via `get_pattern`).
-    pattern:          String,
+    pattern: String,
     /// Compiled form of `pattern` used at encode / train time.
     compiled_pattern: Regex,
     /// Pre-computed byte→rank table for the 256 base tokens.
     /// Built once at construction and reused by every `encode` call.
-    byte_to_rank:     [u32; 256],
+    byte_to_rank: [u32; 256],
     /// Pre-computed rank→byte table for the 256 base tokens.
-    rank_to_byte:     [u8; 256],
+    rank_to_byte: [u8; 256],
 }
 
 #[pymethods]
@@ -232,8 +258,8 @@ impl Tokenizer {
     pub fn new() -> Self {
         let (rank_to_byte, byte_to_rank) = build_byte_rank_tables();
         Self {
-            merges:           StdHashMap::new(),
-            pattern:          String::new(),
+            merges: StdHashMap::new(),
+            pattern: String::new(),
             compiled_pattern: Regex::new("").unwrap(),
             byte_to_rank,
             rank_to_byte,
@@ -261,11 +287,11 @@ impl Tokenizer {
     #[pyo3(signature = (iterator, vocab_size, buffer_size=8192, pattern=None))]
     pub fn train_from_iterator(
         &mut self,
-        py:          Python<'_>,
-        iterator:    &Bound<'_, PyAny>,
-        vocab_size:  u32,
+        py: Python<'_>,
+        iterator: &Bound<'_, PyAny>,
+        vocab_size: u32,
         buffer_size: usize,
-        pattern:     Option<String>,
+        pattern: Option<String>,
     ) -> PyResult<()> {
         if vocab_size < 256 {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -274,14 +300,15 @@ impl Tokenizer {
         }
 
         let pat = pattern.unwrap_or_else(|| GPT4_PATTERN.to_string());
-        self.pattern          = pat.clone();
+        self.pattern = pat.clone();
         self.compiled_pattern = Regex::new(&pat)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
         let num_merges = vocab_size - 256;
         log::info!(
             "Starting BPE training: {} merges to compute (target vocab_size={})",
-            num_merges, vocab_size
+            num_merges,
+            vocab_size
         );
 
         // Obtain a real Python iterator object from whatever iterable was passed in.
@@ -294,7 +321,10 @@ impl Tokenizer {
         let mut buf: Vec<String> = Vec::with_capacity(buffer_size);
         let mut total_sequences = 0u64;
 
-        log::info!("Processing sequences from iterator (buffer_size: {})", buffer_size);
+        log::info!(
+            "Processing sequences from iterator (buffer_size: {})",
+            buffer_size
+        );
 
         // Refill `buf` with up to `buffer_size` strings from the Python iterator.
         // Returns Ok(true) once the iterator is exhausted.
@@ -328,7 +358,9 @@ impl Tokenizer {
         // Stream ingestion loop: refill under the GIL, process without the GIL.
         loop {
             let exhausted = refill(&mut buf)?;
-            if buf.is_empty() && exhausted { break; }
+            if buf.is_empty() && exhausted {
+                break;
+            }
 
             total_sequences += buf.len() as u64;
 
@@ -344,7 +376,9 @@ impl Tokenizer {
                         m
                     })
                     .reduce(AHashMap::new, |mut a, b| {
-                        for (k, v) in b { *a.entry(k).or_default() += v; }
+                        for (k, v) in b {
+                            *a.entry(k).or_default() += v;
+                        }
                         a
                     })
             });
@@ -353,17 +387,20 @@ impl Tokenizer {
                 *counts.entry(k).or_default() += v;
             }
 
-            if exhausted { break; }
+            if exhausted {
+                break;
+            }
         }
 
         log::info!(
             "Processed {} sequences total, {} unique",
-            total_sequences, counts.len()
+            total_sequences,
+            counts.len()
         );
 
         // Convert unique chunks into byte-level Word sequences.
         let mut words = Vec::with_capacity(counts.len());
-        let mut cvec  = Vec::with_capacity(counts.len());
+        let mut cvec = Vec::with_capacity(counts.len());
         for (chunk, c) in &counts {
             words.push(Word::new(chunk.as_bytes(), &self.byte_to_rank));
             cvec.push(*c);
@@ -373,32 +410,46 @@ impl Tokenizer {
         self.merges.clear();
 
         py.detach(|| {
-            log::info!("Computing initial pair counts from {} unique sequences", words.len());
-            let (mut pair_counts, mut where_to_update) =
-                count_pairs_parallel(&words, &cvec);
+            log::info!(
+                "Computing initial pair counts from {} unique sequences",
+                words.len()
+            );
+            let (mut pair_counts, mut where_to_update) = count_pairs_parallel(&words, &cvec);
 
             log::info!("Building heap with {} unique pairs", pair_counts.len());
             // Seed the heap once with every unique pair.
             let mut heap = OctonaryHeap::with_capacity(pair_counts.len());
             for (pair, pos) in where_to_update.drain() {
                 let c = *pair_counts.get(&pair).unwrap_or(&0);
-                if c > 0 { heap.push(MergeJob { pair, count: c as u64, pos }); }
+                if c > 0 {
+                    heap.push(MergeJob {
+                        pair,
+                        count: c as u64,
+                        pos,
+                    });
+                }
             }
 
             log::info!("Starting merge loop");
             let mut merges_done = 0u32;
             while merges_done < num_merges {
-                let Some(mut top) = heap.pop() else { break; };
+                let Some(mut top) = heap.pop() else {
+                    break;
+                };
 
                 // Lazy refresh: if the stored count is stale, correct it and
                 // re-insert rather than doing eager heap updates after every merge.
                 let current = *pair_counts.get(&top.pair).unwrap_or(&0);
                 if top.count != current as u64 {
                     top.count = current as u64;
-                    if top.count > 0 { heap.push(top); }
+                    if top.count > 0 {
+                        heap.push(top);
+                    }
                     continue;
                 }
-                if top.count == 0 { break; }
+                if top.count == 0 {
+                    break;
+                }
 
                 // Record the merge and assign the next available token ID.
                 let new_id = 256 + merges_done;
@@ -412,13 +463,21 @@ impl Tokenizer {
                         let dt = delta * cvec[wi];
                         if dt != 0 {
                             *pair_counts.entry(pair).or_default() += dt;
-                            if delta > 0 { local_pos.entry(pair).or_default().insert(wi); }
+                            if delta > 0 {
+                                local_pos.entry(pair).or_default().insert(wi);
+                            }
                         }
                     }
                 }
                 for (pair, pos) in local_pos {
                     let cnt = *pair_counts.get(&pair).unwrap_or(&0);
-                    if cnt > 0 { heap.push(MergeJob { pair, count: cnt as u64, pos }); }
+                    if cnt > 0 {
+                        heap.push(MergeJob {
+                            pair,
+                            count: cnt as u64,
+                            pos,
+                        });
+                    }
                 }
 
                 merges_done += 1;
@@ -459,8 +518,8 @@ impl Tokenizer {
     ///      push the two new neighbouring pairs. Otherwise discard as stale.
     ///   5. Collect live (non-sentinel) ids via the linked list.
     pub fn encode(&self, text: &str) -> Vec<u32> {
-        use std::collections::BinaryHeap;
         use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
         // Heap entry: (Reverse(merge_rank), left_pos, expected_left_id, expected_right_id).
         // Reverse makes BinaryHeap behave as a min-heap on merge_rank.
         type HeapEntry = (Reverse<u32>, usize, u32, u32);
@@ -477,7 +536,9 @@ impl Tokenizer {
             };
             let bytes: Vec<u8> = mat.as_str().bytes().collect();
             let n = bytes.len();
-            if n == 0 { continue; }
+            if n == 0 {
+                continue;
+            }
 
             // Fast path: single byte, no merges possible.
             if n == 1 {
@@ -486,7 +547,8 @@ impl Tokenizer {
             }
 
             // Step 1: byte → base rank.
-            let mut ids: Vec<u32> = bytes.iter()
+            let mut ids: Vec<u32> = bytes
+                .iter()
                 .map(|&b| self.byte_to_rank[b as usize])
                 .collect();
 
@@ -508,18 +570,26 @@ impl Tokenizer {
             while let Some((Reverse(rank), pos, left_id, right_id)) = heap.pop() {
                 let rpos = next[pos];
                 // Stale-entry checks.
-                if rpos >= n                { continue; }
-                if ids[pos]  != left_id     { continue; }
-                if ids[rpos] != right_id    { continue; }
+                if rpos >= n {
+                    continue;
+                }
+                if ids[pos] != left_id {
+                    continue;
+                }
+                if ids[rpos] != right_id {
+                    continue;
+                }
 
                 // Apply: merged token id == rank (by construction in train_from_iterator).
-                ids[pos]  = rank;
+                ids[pos] = rank;
                 ids[rpos] = u32::MAX; // deleted sentinel
 
                 // Unlink rpos.
                 let rright = next[rpos];
                 next[pos] = rright;
-                if rright < n { prev[rright] = pos; }
+                if rright < n {
+                    prev[rright] = pos;
+                }
 
                 // Push new pairs at the left and right boundaries.
                 let lpos = prev[pos];
@@ -542,7 +612,9 @@ impl Tokenizer {
                     all_ids.push(ids[i]);
                 }
                 i = next[i];
-                if i >= n { break; }
+                if i >= n {
+                    break;
+                }
             }
         }
         all_ids
@@ -554,9 +626,7 @@ impl Tokenizer {
         let mut bytes: Vec<u8> = Vec::new();
         for id in &ids {
             let token_bytes = tb.get(*id as usize).ok_or_else(|| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Unknown token id: {}", id)
-                )
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Unknown token id: {}", id))
             })?;
             bytes.extend(token_bytes);
         }
@@ -578,9 +648,8 @@ impl Tokenizer {
                 std::ffi::CStr::from_bytes_with_nul(b"utf-8\0").unwrap(),
                 &bad_bytes,
                 valid_up_to..(valid_up_to + 1).min(bad_bytes.len()),
-                std::ffi::CStr::from_bytes_with_nul(
-                    b"invalid utf-8 in decoded BPE token bytes\0"
-                ).unwrap(),
+                std::ffi::CStr::from_bytes_with_nul(b"invalid utf-8 in decoded BPE token bytes\0")
+                    .unwrap(),
             ) {
                 Ok(err) => PyErr::from_value(err.into_any()),
                 Err(fallback) => fallback,
@@ -595,17 +664,19 @@ impl Tokenizer {
     #[pyo3(signature = (texts, num_threads=8))]
     pub fn batch_encode(
         &self,
-        py:          Python<'_>,
-        texts:       Vec<String>,
+        py: Python<'_>,
+        texts: Vec<String>,
         num_threads: usize,
     ) -> PyResult<Vec<Vec<u32>>> {
         py.detach(|| {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(num_threads)
                 .build()
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    format!("Failed to build Rayon thread pool: {e}")
-                ))
+                .map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Failed to build Rayon thread pool: {e}"
+                    ))
+                })
                 .map(|pool| pool.install(|| texts.par_iter().map(|t| self.encode(t)).collect()))
         })
     }
@@ -614,13 +685,13 @@ impl Tokenizer {
     ///
     /// Pass the result directly to `tiktoken.Encoding(mergeable_ranks=…)`.
     pub fn get_mergeable_ranks(&self, py: Python<'_>) -> PyObject {
-        let tb   = self.build_token_bytes();
+        let tb = self.build_token_bytes();
         let list = pyo3::types::PyList::empty(py);
         for (rank, bytes) in tb.iter().enumerate() {
             if !bytes.is_empty() {
-                let pb    = pyo3::types::PyBytes::new(py, bytes);
+                let pb = pyo3::types::PyBytes::new(py, bytes);
                 let rank_ = (rank as u32).into_pyobject(py).unwrap();
-                let t     = pyo3::types::PyTuple::new(py, &[pb.as_any(), rank_.as_any()]).unwrap();
+                let t = pyo3::types::PyTuple::new(py, &[pb.as_any(), rank_.as_any()]).unwrap();
                 list.append(t).unwrap();
             }
         }
@@ -628,25 +699,31 @@ impl Tokenizer {
     }
 
     /// Return the regex pattern used for pre-tokenisation.
-    pub fn get_pattern(&self) -> &str { &self.pattern }
+    pub fn get_pattern(&self) -> &str {
+        &self.pattern
+    }
 
     /// Total number of tokens in the vocabulary (256 base + learned merges).
     #[getter]
-    pub fn vocab_size(&self) -> usize { 256 + self.merges.len() }
+    pub fn vocab_size(&self) -> usize {
+        256 + self.merges.len()
+    }
 
     /// Write `vocab.json` and `merges.txt` to disk.
     ///
     /// Both files are written in ascending rank order.  `vocab.json` uses
     /// the GPT-2 byte encoder so every token appears as a printable string.
     pub fn save(&self, vocab_path: &str, merges_path: &str) -> PyResult<()> {
-        let byte_enc    = build_byte_encoder();
-        let tb          = self.build_token_bytes();
-        let non_empty   = tb.iter().filter(|b| !b.is_empty()).count();
+        let byte_enc = build_byte_encoder();
+        let tb = self.build_token_bytes();
+        let non_empty = tb.iter().filter(|b| !b.is_empty()).count();
         let mut written = 0usize;
 
         let mut vocab_json = String::from("{\n");
         for (rank, bytes) in tb.iter().enumerate() {
-            if bytes.is_empty() { continue; }
+            if bytes.is_empty() {
+                continue;
+            }
             let token_str: String = bytes.iter().map(|b| byte_enc[b]).collect();
             let escaped = token_str.replace('\\', "\\\\").replace('"', "\\\"");
             written += 1;
@@ -683,12 +760,19 @@ impl Tokenizer {
         let vocab_size = 256 + self.merges.len();
 
         let mut tb: Vec<Vec<u8>> = (0..vocab_size)
-            .map(|i| if i < 256 { vec![self.rank_to_byte[i]] } else { Vec::new() })
+            .map(|i| {
+                if i < 256 {
+                    vec![self.rank_to_byte[i]]
+                } else {
+                    Vec::new()
+                }
+            })
             .collect();
         let mut sorted: Vec<_> = self.merges.iter().collect();
         sorted.sort_by_key(|(_, &id)| id);
         for (&(a, b), &id) in &sorted {
-            let merged: Vec<u8> = tb[a as usize].iter()
+            let merged: Vec<u8> = tb[a as usize]
+                .iter()
                 .chain(tb[b as usize].iter())
                 .copied()
                 .collect();
@@ -765,7 +849,9 @@ mod tests {
         // Word: [1, 2, 3, 1, 2] with merge (1, 2) -> 99
         // Before: pairs are (1,2), (2,3), (3,1), (1,2)
         // After:  [99, 3, 99],   pairs are (99,3), (3,99)
-        let mut word = Word { ids: vec![1, 2, 3, 1, 2] };
+        let mut word = Word {
+            ids: vec![1, 2, 3, 1, 2],
+        };
         let deltas = word.merge_pair((1, 2), 99);
 
         let mut delta_map: StdHashMap<Pair, i32> = StdHashMap::new();
@@ -785,7 +871,10 @@ mod tests {
         ensure_python_initialized();
         let mut tok = new_tokenizer_with_pattern(r"\w+");
         tok.merges.insert(
-            (tok.byte_to_rank[b'h' as usize], tok.byte_to_rank[b'i' as usize]),
+            (
+                tok.byte_to_rank[b'h' as usize],
+                tok.byte_to_rank[b'i' as usize],
+            ),
             256,
         );
         let text = "hi";
@@ -801,9 +890,9 @@ mod tests {
         let h = tok.byte_to_rank[b'h' as usize];
         let e = tok.byte_to_rank[b'e' as usize];
         let l = tok.byte_to_rank[b'l' as usize];
-        tok.merges.insert((h, e), 256);       // "he"
-        tok.merges.insert((l, l), 257);       // "ll"
-        tok.merges.insert((256, 257), 258);   // "hell"
+        tok.merges.insert((h, e), 256); // "he"
+        tok.merges.insert((l, l), 257); // "ll"
+        tok.merges.insert((256, 257), 258); // "hell"
 
         let text = "hello world";
         let ids = tok.encode(text);
@@ -890,15 +979,25 @@ mod tests {
         let mut heap = OctonaryHeap::with_capacity(pair_counts.len());
         for (pair, pos) in where_to_update.drain() {
             let c = *pair_counts.get(&pair).unwrap_or(&0);
-            if c > 0 { heap.push(MergeJob { pair, count: c as u64, pos }); }
+            if c > 0 {
+                heap.push(MergeJob {
+                    pair,
+                    count: c as u64,
+                    pos,
+                });
+            }
         }
         let mut words = words;
         let mut merges_done = 0u32;
         let num_merges = 2u32;
         while merges_done < num_merges {
-            let Some(top) = heap.pop() else { break; };
+            let Some(top) = heap.pop() else {
+                break;
+            };
             let current = *pair_counts.get(&top.pair).unwrap_or(&0);
-            if current <= 0 { continue; }
+            if current <= 0 {
+                continue;
+            }
             let new_id = 256 + merges_done;
             tok.merges.insert(top.pair, new_id);
             // Newly created pairs must be re-pushed onto the heap so the next
@@ -910,13 +1009,21 @@ mod tests {
                     let dt = delta * counts[wi];
                     if dt != 0 {
                         *pair_counts.entry(pair).or_default() += dt;
-                        if delta > 0 { local_pos.entry(pair).or_default().insert(wi); }
+                        if delta > 0 {
+                            local_pos.entry(pair).or_default().insert(wi);
+                        }
                     }
                 }
             }
             for (pair, pos) in local_pos {
                 let cnt = *pair_counts.get(&pair).unwrap_or(&0);
-                if cnt > 0 { heap.push(MergeJob { pair, count: cnt as u64, pos }); }
+                if cnt > 0 {
+                    heap.push(MergeJob {
+                        pair,
+                        count: cnt as u64,
+                        pos,
+                    });
+                }
             }
             merges_done += 1;
         }
