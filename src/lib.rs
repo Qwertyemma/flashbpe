@@ -252,6 +252,12 @@ pub struct Tokenizer {
     rank_to_byte: [u8; 256],
 }
 
+impl Default for Tokenizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[pymethods]
 impl Tokenizer {
     #[new]
@@ -620,7 +626,7 @@ impl Tokenizer {
     }
 
     /// Decode a sequence of token IDs back into a UTF-8 string.
-    pub fn decode(&self, py: Python<'_>, ids: Vec<u32>) -> PyResult<String> {
+    pub fn decode(&self, ids: Vec<u32>) -> PyResult<String> {
         let tb = self.build_token_bytes();
         let mut bytes: Vec<u8> = Vec::new();
         for id in &ids {
@@ -630,28 +636,10 @@ impl Tokenizer {
             bytes.extend(token_bytes);
         }
         String::from_utf8(bytes).map_err(|e| {
-            // PyUnicodeDecodeError has a real 5-argument constructor
-            // (encoding, object, start, end, reason) in CPython — calling
-            // `new_err`/`PyErr::new` with a single formatted string, as the
-            // upstream karpathy/rustbpe reference implementation currently
-            // does, raises a confusing `TypeError: function takes exactly 5
-            // arguments (1 given)` instead of the intended UnicodeDecodeError.
-            // We build it correctly here via `PyUnicodeDecodeError::new`.
-            let bad_bytes = e.into_bytes();
-            let valid_up_to = String::from_utf8(bad_bytes.clone())
-                .err()
-                .map(|err| err.utf8_error().valid_up_to())
-                .unwrap_or(0);
-            match pyo3::exceptions::PyUnicodeDecodeError::new(
-                py,
-                c"utf-8",
-                &bad_bytes,
-                valid_up_to..(valid_up_to + 1).min(bad_bytes.len()),
-                c"invalid utf-8 in decoded BPE token bytes",
-            ) {
-                Ok(err) => PyErr::from_value(err.into_any()),
-                Err(fallback) => fallback,
-            }
+            PyErr::new::<pyo3::exceptions::PyUnicodeDecodeError, _>(format!(
+                "Decoded bytes are not valid UTF-8: {}",
+                e
+            ))
         })
     }
 
@@ -682,18 +670,13 @@ impl Tokenizer {
     /// Return `[(token_bytes, rank), …]` sorted by rank.
     ///
     /// Pass the result directly to `tiktoken.Encoding(mergeable_ranks=…)`.
-    pub fn get_mergeable_ranks(&self, py: Python<'_>) -> PyObject {
+    pub fn get_mergeable_ranks(&self) -> Vec<(Vec<u8>, u32)> {
         let tb = self.build_token_bytes();
-        let list = pyo3::types::PyList::empty(py);
-        for (rank, bytes) in tb.iter().enumerate() {
-            if !bytes.is_empty() {
-                let pb = pyo3::types::PyBytes::new(py, bytes);
-                let rank_ = (rank as u32).into_pyobject(py).unwrap();
-                let t = pyo3::types::PyTuple::new(py, [pb.as_any(), rank_.as_any()]).unwrap();
-                list.append(t).unwrap();
-            }
-        }
-        list.into_pyobject(py).unwrap().into()
+        tb.iter()
+            .enumerate()
+            .filter(|(_, bytes)| !bytes.is_empty())
+            .map(|(rank, bytes)| (bytes.clone(), rank as u32))
+            .collect()
     }
 
     /// Return the regex pattern used for pre-tokenisation.
@@ -877,7 +860,7 @@ mod tests {
         );
         let text = "hi";
         let ids = tok.encode(text);
-        let decoded = Python::attach(|py| tok.decode(py, ids)).unwrap();
+        let decoded = tok.decode(ids).unwrap();
         assert_eq!(decoded, text);
     }
 
@@ -894,7 +877,7 @@ mod tests {
 
         let text = "hello world";
         let ids = tok.encode(text);
-        let decoded = Python::attach(|py| tok.decode(py, ids)).unwrap();
+        let decoded = tok.decode(ids).unwrap();
         assert_eq!(decoded, text);
     }
 
@@ -905,7 +888,7 @@ mod tests {
         let tok = new_tokenizer_with_pattern("");
         let h = tok.byte_to_rank[b'h' as usize];
         let i = tok.byte_to_rank[b'i' as usize];
-        let decoded = Python::attach(|py| tok.decode(py, vec![h, i])).unwrap();
+        let decoded = tok.decode(vec![h, i]).unwrap();
         assert_eq!(decoded, "hi");
     }
 
@@ -915,7 +898,7 @@ mod tests {
         // Token 9000 was never learned by this tokenizer -> must error,
         // not silently drop or lossily replace the byte sequence.
         let tok = Tokenizer::new();
-        let result = Python::attach(|py| tok.decode(py, vec![9000]));
+        let result = tok.decode(vec![9000]);
         assert!(result.is_err());
     }
 
@@ -923,7 +906,7 @@ mod tests {
     fn test_decode_empty() {
         ensure_python_initialized();
         let tok = Tokenizer::new();
-        let decoded = Python::attach(|py| tok.decode(py, vec![])).unwrap();
+        let decoded = tok.decode(vec![]).unwrap();
         assert_eq!(decoded, "");
     }
 
