@@ -369,9 +369,8 @@ impl Tokenizer {
                     .map(|s| {
                         let mut m: AHashMap<CompactString, i32> = AHashMap::new();
                         for mat in compiled.find_iter(s) {
-                            if let Ok(mat) = mat {
-                                *m.entry(CompactString::from(mat.as_str())).or_default() += 1;
-                            }
+                            let piece = mat.expect("regex match failed").as_str();
+                            *m.entry(CompactString::from(piece)).or_default() += 1;
                         }
                         m
                     })
@@ -481,7 +480,7 @@ impl Tokenizer {
                 }
 
                 merges_done += 1;
-                if merges_done % 1000 == 0 || merges_done == num_merges {
+                if merges_done.is_multiple_of(1000) || merges_done == num_merges {
                     log::info!(
                         "Progress: {}% ({}/{} merges) - Last merge: {:?} -> {} (frequency: {})",
                         (merges_done * 100) / num_merges.max(1),
@@ -645,11 +644,10 @@ impl Tokenizer {
                 .unwrap_or(0);
             match pyo3::exceptions::PyUnicodeDecodeError::new(
                 py,
-                std::ffi::CStr::from_bytes_with_nul(b"utf-8\0").unwrap(),
+                c"utf-8",
                 &bad_bytes,
                 valid_up_to..(valid_up_to + 1).min(bad_bytes.len()),
-                std::ffi::CStr::from_bytes_with_nul(b"invalid utf-8 in decoded BPE token bytes\0")
-                    .unwrap(),
+                c"invalid utf-8 in decoded BPE token bytes",
             ) {
                 Ok(err) => PyErr::from_value(err.into_any()),
                 Err(fallback) => fallback,
@@ -691,7 +689,7 @@ impl Tokenizer {
             if !bytes.is_empty() {
                 let pb = pyo3::types::PyBytes::new(py, bytes);
                 let rank_ = (rank as u32).into_pyobject(py).unwrap();
-                let t = pyo3::types::PyTuple::new(py, &[pb.as_any(), rank_.as_any()]).unwrap();
+                let t = pyo3::types::PyTuple::new(py, [pb.as_any(), rank_.as_any()]).unwrap();
                 list.append(t).unwrap();
             }
         }
